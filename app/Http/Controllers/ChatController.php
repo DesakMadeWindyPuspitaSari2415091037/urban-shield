@@ -1,12 +1,48 @@
 <?php
 
 namespace App\Http\Controllers;
+
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 
 class ChatController extends Controller
 {
+    private $intents = [
+        'definisi' => [
+            'apa itu', 'itu apa', 'itu apaan', 'itu apasih', 'apa maksudnya', 'apa artinya', 'apa maknanya',
+            'apa pengertiannya', 'apa definisinya', 'maksudnya apa', 'artinya apa', 'maknanya apa',
+            'jelasin dong', 'tolong jelaskan', 'bisa dijelasin gak', 'itu tuh apa', 'itu tuh maksudnya apa',
+            'itu tuh gimana', 'itu tuh kayak gimana', 'itu tuh tentang apa', 'itu tuh penjelasannya gimana',
+            'itu tuh bisa dijelasin ga', 'apa arti kata', 'apa yang dimaksud dengan', 'apa yang disebut dengan',
+            'apa yang dinamakan', 'apa pengertian dari', 'apa itu yang dimaksud', 'apa sih yang dimaksud dengan',
+            'apa sih arti dari'
+        ],
+        'gejala' => [
+            'apa gejalanya', 'gejalanya apa', 'ciri-cirinya apa', 'tanda-tandanya apa', 'bagaimana gejalanya',
+            'apa saja gejalanya', 'gimana tahu orang itu kenapa', 'tanda orang yang mengalami',
+            'apa yang dirasakan', 'apa yang terjadi pada tubuh', 'apa yang dialami',
+            'apa ciri-ciri kondisi ini', 'apa tanda-tanda awalnya', 'apa yang muncul saat kejadian',
+            'apa yang dirasakan korban'
+        ],
+        'prosedur' => [
+            'apa yang harus dilakukan', 'langkah-langkahnya apa', 'gimana cara menolong',
+            'apa pertolongan pertamanya', 'cara mengatasi', 'tindakan darurat untuk',
+            'apa yang dilakukan saat kejadian', 'bagaimana cara evakuasi',
+            'apa yang dilakukan saat kondisi ini', 'apa yang harus dilakukan jika terjadi',
+            'apa yang dilakukan setelah kejadian', 'bagaimana penanganannya',
+            'apa saja yang perlu disiapkan', 'apa yang dilakukan saat darurat',
+            'apa yang dilakukan saat bencana'
+        ],
+        'kategori' => [
+            'termasuk kategori apa', 'jenis kasus apa', 'ini termasuk medis atau trauma',
+            'ini masuk kategori apa', 'ini tipe kasus apa', 'ini termasuk bencana apa',
+            'ini termasuk jenis apa', 'ini termasuk klasifikasi apa', 'ini termasuk kelompok apa',
+            'ini termasuk tipe kejadian apa'
+        ]
+    ];
+
     public function index()
     {
         return view('chat');
@@ -14,44 +50,91 @@ class ChatController extends Controller
 
     public function send(Request $request)
     {
-        $message = strtolower($request->input('message'));
+        $userMessage = strtolower($request->input('message'));
 
-        // 1. Deteksi sapaan
-        $sapaan = ['hi', 'halo', 'hello', 'hai'];
-        if (in_array($message, $sapaan)) {
-            return response()->json([
-                'answer' => 'Hai! Saya UrbanShield, siap bantu kamu soal kebencanaan dan keselamatan.'
-            ]);
+        // Deteksi sapaan
+        $sapaan = ['hi', 'halo', 'hai', 'hello', 'selamat pagi', 'selamat siang', 'selamat sore', 'selamat malam'];
+        foreach ($sapaan as $salam) {
+            if (Str::contains($userMessage, $salam)) {
+                return response()->json([
+                    'answer' => 'Hai! Saya UrbanShield, siap bantu kamu soal kebencanaan dan keselamatan.'
+                ]);
+            }
         }
 
-        // 2. Deteksi bahasa user
-        $language = $this->detectLanguage($message); // 'id' atau 'en'
+        // Deteksi kategori berdasarkan intent
+        $detectedKategori = null;
+        foreach ($this->intents as $kategori => $pola) {
+            foreach ($pola as $frasa) {
+                if (Str::contains($userMessage, $frasa)) {
+                    $detectedKategori = $kategori;
+                    break 2;
+                }
+            }
+        }
 
-        // 3. Minta Groq kasih keyword dan kategori
-        $aiDecision = $this->callGroqForInstruction($message);
-        $parts = explode('|', $aiDecision);
-        $keyword = trim($parts[0] ?? '');
-        $category = trim($parts[1] ?? 'umum');
+        // Fallback ke 'definisi' jika tidak terdeteksi
+        $detectedKategori = $detectedKategori ?? 'definisi';
 
-        // 4. Cari jawaban dari database sesuai bahasa
-        $answer = $this->searchDatabaseSmart($keyword, $category, $language);
+        // Ekstraksi keyword sederhana
+        $keyword = $this->extractKeyword($userMessage);
 
-        // 5. Fallback kalau nggak ketemu
+        // Cari jawaban dari database
+        $answer = $this->searchDatabaseSmart($keyword, $detectedKategori);
+
         if (!$answer) {
-            $answer = $language === 'en'
-                ? "Sorry, I couldn't find information about '$keyword' ($category)."
-                : "Maaf, data mengenai $keyword ($category) tidak ditemukan di referensi kami.";
+            $answer = "Maaf, saya tidak menemukan informasi tentang \"$keyword\" dalam kategori \"$detectedKategori\".";
         }
 
         return response()->json(['answer' => $answer]);
     }
 
-    private function detectLanguage($text)
+    private function extractKeyword($text)
     {
-        $prompt = "Bahasa apa kalimat ini? Jawab hanya 'id' atau 'en'. Kalimat: \"$text\"";
-        return $this->askGroq($prompt);
+        $stopwords = ['apa', 'itu', 'yang', 'adalah', 'dan', 'dengan', 'bagaimana', 'cara', 'untuk', 'siapa', 'dimana', 'kapan'];
+        $words = explode(' ', strtolower($text));
+        $filtered = array_diff($words, $stopwords);
+        return trim(array_values($filtered)[0] ?? '');
     }
 
+    private function searchDatabaseSmart($keyword, $category)
+    {
+        if (!$keyword) return null;
+
+        if ($category === 'gejala') {
+            return DB::table('pertolongan_pertama')
+                ->where('nama_kasus', 'like', "%$keyword%")
+                ->value('gejala');
+        }
+
+        if ($category === 'prosedur') {
+            return DB::table('pertolongan_pertama')
+                ->where('nama_kasus', 'like', "%$keyword%")
+                ->value('langkah') ??
+                DB::table('bencana')
+                ->where('nama_bencana', 'like', "%$keyword%")
+                ->value('prosedur_evakuasi');
+        }
+
+        if ($category === 'kategori') {
+            return DB::table('pertolongan_pertama')
+                ->where('nama_kasus', 'like', "%$keyword%")
+                ->value('kategori') ??
+                DB::table('bencana')
+                ->where('nama_bencana', 'like', "%$keyword%")
+                ->value('kategori');
+        }
+
+        // Default: definisi
+        return DB::table('istilah')
+            ->where('istilah', 'like', "%$keyword%")
+            ->value('definisi') ??
+            DB::table('bencana')
+            ->where('nama_bencana', 'like', "%$keyword%")
+            ->value('deskripsi');
+    }
+
+    // Opsional: kalau kamu mau tetap pakai Groq
     private function callGroqForInstruction($message)
     {
         $prompt = "Tugasmu adalah menganalisis pertanyaan user: \"$message\". 
@@ -61,6 +144,7 @@ class ChatController extends Controller
         - 'cara evakuasi gempa' -> gempa|prosedur
         - 'apa itu evakuasi' -> evakuasi|definisi
         Jawab HANYA dengan format: keyword|kategori";
+
         return $this->askGroq($prompt);
     }
 
@@ -76,36 +160,6 @@ class ChatController extends Controller
             'max_tokens' => 30,
         ]);
 
-        return strtolower(trim($response->json()['choices'][0]['message']['content'] ?? 'id'));
-    }
-
-    private function searchDatabaseSmart($keyword, $category, $language)
-    {
-        if (!$keyword) return null;
-
-        $isEnglish = $language === 'en';
-
-        if ($category === 'gejala') {
-            return DB::table('pertolongan_pertama')
-                ->where('nama_kasus', 'like', "%$keyword%")
-                ->value($isEnglish ? 'gejala_en' : 'gejala');
-        }
-
-        if ($category === 'prosedur') {
-            return DB::table('pertolongan_pertama')
-                ->where('nama_kasus', 'like', "%$keyword%")
-                ->value($isEnglish ? 'langkah_en' : 'langkah') ??
-                DB::table('bencana')
-                ->where('nama_bencana', 'like', "%$keyword%")
-                ->value($isEnglish ? 'prosedur_evakuasi_en' : 'prosedur_evakuasi');
-        }
-
-        // Default: definisi
-        return DB::table('istilah')
-            ->where('istilah', 'like', "%$keyword%")
-            ->value($isEnglish ? 'definisi_en' : 'definisi') ??
-            DB::table('bencana')
-            ->where('nama_bencana', 'like', "%$keyword%")
-            ->value($isEnglish ? 'deskripsi_en' : 'deskripsi');
+        return strtolower(trim($response->json()['choices'][0]['message']['content'] ?? ''));
     }
 }

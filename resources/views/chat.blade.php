@@ -2,161 +2,151 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <title>UrbanShield Chatbot</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UrbanShield Chat</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
+        * { box-sizing: border-box; }
         body {
-            font-family: Arial, sans-serif;
-            background: #f2f2f2;
             margin: 0;
             padding: 0;
-        }
-
-        .logo-header {
-            position: fixed;
-            top: 20px;
-            left: 20px;
+            font-family: 'Segoe UI', sans-serif;
+            background-color: #f0f2f5;
+            height: 100vh;
             display: flex;
+            justify-content: center;
             align-items: center;
-            z-index: 1000;
         }
-
-        .logo-header img {
-            height: 50px;
-            margin-right: 10px;
-        }
-
-        .logo-header span {
-            font-size: 18px;
-            font-weight: bold;
-            color: #333;
-        }
-
-        .chat-container {
+        .chat-wrapper {
             width: 100%;
-            max-width: 600px;
-            margin: 100px auto 40px;
-            background: #fff;
-            border-radius: 10px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            max-width: 960px;
+            height: 90vh;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
             display: flex;
             flex-direction: column;
-            height: 75vh;
+            overflow: hidden;
         }
-
-        .chat-box {
+        .chat-header {
+            background-color: #007bff;
+            color: white;
+            padding: 20px;
+            font-size: 22px;
+            font-weight: bold;
+        }
+        .chat-body {
             flex: 1;
             padding: 20px;
             overflow-y: auto;
         }
-
-        .message {
-            margin: 10px 0;
-            padding: 12px 16px;
-            border-radius: 20px;
+        .chat-message {
+            margin-bottom: 16px;
             max-width: 80%;
-            line-height: 1.4;
-            white-space: pre-wrap;
+            padding: 12px 16px;
+            border-radius: 16px;
+            line-height: 1.5;
+            word-wrap: break-word;
         }
-
-        .user {
-            background: #d1e7dd;
-            align-self: flex-end;
-        }
-
-        .bot {
-            background: #e0e0e0;
+        .chat-message.bot {
+            background-color: #e0f0ff;
+            color: #007bff;
             align-self: flex-start;
         }
-
-        .input-box {
-            display: flex;
-            padding: 15px;
-            border-top: 1px solid #ccc;
+        .chat-message.user {
+            background-color: #d1ffd1;
+            color: #333;
+            align-self: flex-end;
         }
-
-        .input-box input {
+        .chat-footer {
+            display: flex;
+            padding: 20px;
+            border-top: 1px solid #ddd;
+        }
+        input[type="text"] {
             flex: 1;
-            padding: 10px;
-            border-radius: 20px;
+            padding: 14px;
             border: 1px solid #ccc;
-            outline: none;
+            border-radius: 8px;
             font-size: 16px;
         }
-
-        .input-box button {
-            margin-left: 10px;
-            padding: 10px 20px;
-            border-radius: 20px;
+        button {
+            background-color: #007bff;
+            color: white;
             border: none;
-            background: #4a4a4a;
-            color: #fff;
-            font-weight: bold;
+            padding: 14px 24px;
+            margin-left: 12px;
+            border-radius: 8px;
+            font-size: 16px;
             cursor: pointer;
         }
-
-        .input-box button:hover {
-            background: #333;
+        button:hover {
+            background-color: #0056b3;
         }
     </style>
 </head>
 <body>
-
-
-    <!-- Kontainer Chat -->
-    <div class="chat-container">
-        <div class="chat-box" id="chatBox">
-            <!-- Pesan akan muncul di sini -->
+    <div class="chat-wrapper">
+        <div class="chat-header">UrbanShield 🛡️</div>
+        <div class="chat-body" id="chatBody">
+            <div class="chat-message bot">
+                Hi there! 👋 Saya UrbanShield, siap bantu kamu soal kebencanaan dan keselamatan. Apa yang ingin kamu tahu?
+            </div>
         </div>
-
-        <form id="chatForm" class="input-box">
-            @csrf
-            <input type="text" name="message" placeholder="Tanya sesuatu..." autocomplete="off">
-            <button type="submit">Kirim</button>
-        </form>
+        <div class="chat-footer">
+            <input type="text" id="messageInput" placeholder="Tulis pertanyaan kamu..." onkeydown="if(event.key === 'Enter') sendMessage()" />
+            <button onclick="sendMessage()">Kirim</button>
+        </div>
     </div>
 
     <script>
-        const chatBox = document.getElementById('chatBox');
-        const chatForm = document.getElementById('chatForm');
-
-        // Fungsi menambahkan pesan ke chat box
-        function addMessage(text, type) {
-            const div = document.createElement('div');
-            div.classList.add('message', type);
-            div.innerText = text;
-            chatBox.appendChild(div);
-            chatBox.scrollTop = chatBox.scrollHeight;
-        }
-
-        // Pesan pembuka otomatis saat halaman dimuat
-        window.onload = function() {
-            const opening = "Hi there! 👋 I'm UrbanShield, your personal safety assistant. I'm here to help you with disaster preparedness, emergency procedures, and first aid tips. What do you need to know?";
-            addMessage(opening, 'bot');
-        };
-
-        // Kirim pesan ke backend saat form disubmit
-        chatForm.addEventListener('submit', async function(e) {
-            e.preventDefault();
-            let message = this.message.value.trim();
+        function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
             if (!message) return;
 
-            addMessage(message, 'user');
-            this.message.value = '';
+            appendMessage('user', message);
+            input.value = '';
 
-            let res = await fetch('/chat/send', {
+            const typingIndicator = document.createElement('div');
+            typingIndicator.className = 'chat-message bot';
+            typingIndicator.id = 'typing-indicator';
+            typingIndicator.textContent = 'UrbanShield sedang mengetik...';
+            document.getElementById('chatBody').appendChild(typingIndicator);
+            scrollToBottom();
+
+            fetch('/chat/send', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'X-CSRF-TOKEN': '{{ csrf_token() }}'
                 },
                 body: JSON.stringify({ message })
+            })
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('typing-indicator')?.remove();
+                appendMessage('bot', data.answer);
+            })
+            .catch(err => {
+                document.getElementById('typing-indicator')?.remove();
+                appendMessage('bot', 'Maaf, terjadi kesalahan.');
+                console.error(err);
             });
+        }
 
-            let data = await res.json();
-            addMessage(data.answer, 'bot');
-        });
+        function appendMessage(sender, text) {
+            const chatBody = document.getElementById('chatBody');
+            const div = document.createElement('div');
+            div.className = 'chat-message ' + sender;
+            div.textContent = text;
+            chatBody.appendChild(div);
+            scrollToBottom();
+        }
+
+        function scrollToBottom() {
+            const chatBody = document.getElementById('chatBody');
+            chatBody.scrollTop = chatBody.scrollHeight;
+        }
     </script>
-
 </body>
 </html>

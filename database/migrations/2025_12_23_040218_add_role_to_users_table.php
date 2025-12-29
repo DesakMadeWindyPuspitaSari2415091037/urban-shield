@@ -9,13 +9,11 @@ return new class extends Migration
     /**
      * Run the migrations.
      */
-    public function up(): void
-    {
-        Schema::table('users', function (Blueprint $table) {
-            // Tambah kolom role dengan 3 pilihan
-            $table->enum('role', ['umum','kontributor','admin'])->default('umum')->after('password');
-        });
-    }
+    public function up() {
+    Schema::table('users', function (Blueprint $table) {
+        $table->enum('role', ['admin', 'contributor', 'user'])->default('user');
+    });
+}
 
     /**
      * Reverse the migrations.
